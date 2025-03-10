@@ -42,14 +42,36 @@ for R1 in *.R1.fq.gz; do
     samtools index "bam_files/${SAMPLE}_sorted.bam"
 
     # Step 3: Generate consensus sequence
-    bcftools mpileup -f "$REFERENCE" "bam_files/${SAMPLE}_sorted.bam" | \
-        bcftools call -c - | \
-        bcftools consensus -f "$REFERENCE" > "consensus_sequences/${SAMPLE}_consensus.fasta"
+    # Loop through all VCF files (without .gz) in logs directory
+for VCF in logs/*_variants.vcf; do
+    SAMPLE=$(basename "$VCF" "_variants.vcf")
+    echo "Processing VCF for sample: $SAMPLE"
 
-    echo "Completed processing for sample: $SAMPLE"
+    # Step 4: Compress and index VCF
+    if [[ -f "logs/${SAMPLE}_variants.vcf" ]]; then
+        echo "Compressing logs/${SAMPLE}_variants.vcf ..."
+        bgzip -f "logs/${SAMPLE}_variants.vcf"
 
-    # Cleanup intermediate files
-    rm -f "logs/${SAMPLE}.sam" "logs/${SAMPLE}.bam"
+        echo "Indexing logs/${SAMPLE}_variants.vcf.gz ..."
+        tabix -p vcf "logs/${SAMPLE}_variants.vcf.gz"
+    else
+        echo "Warning: logs/${SAMPLE}_variants.vcf not found, skipping compression and indexing."
+        continue
+    fi
+
+  # Step 5: Generate consensus sequence
+    FASTA_OUT="/your/path/consensus_sequences/${SAMPLE}_mtDNA.fasta"
+
+    if [[ -f "logs/${SAMPLE}_variants.vcf.gz" ]]; then
+        echo "Generating consensus sequence for ${SAMPLE}..."
+        bcftools consensus -f "$REFERENCE" -o "$FASTA_OUT" "logs/${SAMPLE}_variants.vcf.gz"
+
+        # Fix FASTA header (replace reference header with sample name)
+        sed -i "1s/.*/>${SAMPLE}_mtDNA/" "$FASTA_OUT"
+    else
+        echo "Error: logs/${SAMPLE}_variants.vcf.gz not found, skipping consensus generation."
+    fi
+
 done
 
 echo "All samples processed successfully!"
